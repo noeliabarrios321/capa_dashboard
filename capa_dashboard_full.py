@@ -9,18 +9,11 @@ import numpy as np
 # ==========================
 st.set_page_config(page_title="CAPA Dashboard", layout="wide")
 
-# CSS simple para tamaños de títulos
 st.markdown("""
     <style>
-    h1 {
-        font-size: 28px !important;
-    }
-    h2 {
-        font-size: 20px !important;
-    }
-    h3 {
-        font-size: 16px !important;
-    }
+    h1 {font-size: 30px !important;}
+    h2 {font-size: 20px !important;}
+    h3 {font-size: 16px !important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -29,28 +22,29 @@ TODAY = datetime.today()
 # ==========================
 # LOAD DATA
 # ==========================
-@st.cache_data(ttl=60)  # Se refresca cada 60 segundos
+@st.cache_data(ttl=60)
 def load_data():
+    # Enlace directo de descarga desde SharePoint
+    EXCEL_URL = "https://sonova-my.sharepoint.com/personal/noelia_barrios_sonova_com/_layouts/15/download.aspx?share=waf627f5a3b3e45be958e29b6842b3051"
+
     # Leer hoja principal
-    df = pd.read_excel("CAPA_follow up (11).xlsx", sheet_name="DataBase")
+    df = pd.read_excel(EXCEL_URL, sheet_name="DataBase")
     df.columns = df.columns.str.strip().str.lower()
     if "responsible site" in df.columns:
         df["responsible site"] = df["responsible site"].astype(str).str.strip()
-    # Solo convertir a datetime las columnas que realmente son fechas
+
     for col in ["created date", "current phase due date", "closed date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
-    
+
     # Leer hoja "Committed Date"
     try:
-        df_committed = pd.read_excel("CAPA_follow up (11).xlsx", sheet_name="Committed Date")
+        df_committed = pd.read_excel(EXCEL_URL, sheet_name="Committed Date")
         df_committed.columns = df_committed.columns.str.strip().str.lower()
-        
-        # Seleccionar solo las columnas necesarias
+
         if "capa number" in df_committed.columns:
-            # Buscar la columna que puede llamarse "at risk" o "to be overdue"
             cols_to_merge = ["capa number", "committed date"]
-            
+
             if "to be overdue" in df_committed.columns:
                 cols_to_merge.append("to be overdue")
                 committed_lookup = df_committed[cols_to_merge].copy()
@@ -60,13 +54,10 @@ def load_data():
                 committed_lookup = df_committed[cols_to_merge].copy()
             else:
                 committed_lookup = df_committed[["capa number", "committed date"]].copy()
-            
+
             committed_lookup = committed_lookup.drop_duplicates(subset=["capa number"], keep="last")
-            
-            # Hacer merge con el dataframe principal
             df = df.merge(committed_lookup, on="capa number", how="left", suffixes=("", "_committed"))
-            
-            # Si hay columnas duplicadas, usar las de committed
+
             if "committed date_committed" in df.columns:
                 df["committed date"] = df["committed date_committed"]
                 df = df.drop(columns=["committed date_committed"])
@@ -75,67 +66,53 @@ def load_data():
                 df = df.drop(columns=["at risk_committed"])
     except Exception as e:
         st.warning(f"No se pudo leer la hoja 'Committed Date': {e}")
-    
-    # Calcular extensiones contando "tApproveDueDateExtension" con fechas diferentes SOLO EN LA FASE ACTUAL
+
+    # Calcular extensiones de fecha de vencimiento
     try:
         if "step id" in df.columns and "sign-off date" in df.columns and "current phase" in df.columns:
-            # Crear un DataFrame con extensiones
             df_ext = df[df["step id"].str.lower().str.strip() == "tapproveduedateextension"].copy()
-            
-            # Para cada CAPA, encontrar cuándo entró a su fase actual
-            # Esto lo haremos buscando la fecha más reciente donde cambió la fase
             extensions_count = {}
-            
+
             for capa_num in df["capa number"].unique():
                 if pd.isna(capa_num):
                     continue
-                    
-                # Obtener todas las filas de este CAPA
+
                 capa_rows = df[df["capa number"] == capa_num].copy()
-                
-                # Obtener la fase actual (última fase registrada)
                 current_phase = capa_rows["current phase"].iloc[-1] if len(capa_rows) > 0 else None
-                
+
                 if pd.isna(current_phase):
                     extensions_count[capa_num] = 0
                     continue
-                
-                # Encontrar cuándo entró a esta fase (primera vez que aparece esta fase)
+
                 phase_entry_rows = capa_rows[capa_rows["current phase"] == current_phase]
-                
                 if len(phase_entry_rows) == 0:
                     extensions_count[capa_num] = 0
                     continue
-                
-                # Fecha de entrada a la fase actual
+
                 phase_entry_date = pd.to_datetime(phase_entry_rows["sign-off date"].iloc[0], errors="coerce")
-                
-                # Filtrar extensiones de este CAPA después de entrar a la fase actual
                 capa_extensions = df_ext[df_ext["capa number"] == capa_num].copy()
                 capa_extensions["sign-off date"] = pd.to_datetime(capa_extensions["sign-off date"], errors="coerce").dt.date
-                
+
                 if pd.notna(phase_entry_date):
-                    # Solo contar extensiones después de entrar a la fase
                     capa_extensions = capa_extensions[
                         pd.to_datetime(capa_extensions["sign-off date"]) >= phase_entry_date
                     ]
-                
-                # Contar fechas únicas
+
                 extensions_count[capa_num] = capa_extensions["sign-off date"].nunique()
-            
-            # Mapear al dataframe principal
+
             df["due_date_extensions"] = df["capa number"].map(extensions_count).fillna(0).astype(int)
         else:
             df["due_date_extensions"] = 0
     except Exception as e:
         st.warning(f"No se pudo calcular extensiones: {e}")
         df["due_date_extensions"] = 0
-    
+
     return df
 
 df = load_data()
 
 st.markdown("<h1>CAPA DASHBOARD</h1>", unsafe_allow_html=True)
+
 
 # ==========================
 # SECTION: Indicators
