@@ -1,9 +1,3 @@
-import pandas as pd
-import streamlit as st
-import plotly.graph_objects as go
-from datetime import datetime, timedelta, date
-import numpy as np
-
 # ==========================
 # CONFIG
 # ==========================
@@ -11,7 +5,7 @@ st.set_page_config(page_title="CAPA Dashboard", layout="wide")
 
 st.markdown("""
     <style>
-    h1 {font-size: 30px !important;}
+    h1 {font-size: 28px !important;}
     h2 {font-size: 20px !important;}
     h3 {font-size: 16px !important;}
     </style>
@@ -24,11 +18,10 @@ TODAY = datetime.today()
 # ==========================
 @st.cache_data(ttl=60)
 def load_data():
-    # Enlace directo de descarga desde SharePoint
-    EXCEL_URL = "https://sonova-my.sharepoint.com/personal/noelia_barrios_sonova_com/_layouts/15/download.aspx?share=waf627f5a3b3e45be958e29b6842b3051"
+    # Leer hoja principal (el archivo debe estar en el mismo repositorio que el script)
+    EXCEL_FILE = "CAPA_follow up (11).xlsx"
 
-    # Leer hoja principal
-    df = pd.read_excel(EXCEL_URL, sheet_name="DataBase")
+    df = pd.read_excel(EXCEL_FILE, sheet_name="DataBase")
     df.columns = df.columns.str.strip().str.lower()
     if "responsible site" in df.columns:
         df["responsible site"] = df["responsible site"].astype(str).str.strip()
@@ -39,7 +32,7 @@ def load_data():
 
     # Leer hoja "Committed Date"
     try:
-        df_committed = pd.read_excel(EXCEL_URL, sheet_name="Committed Date")
+        df_committed = pd.read_excel(EXCEL_FILE, sheet_name="Committed Date")
         df_committed.columns = df_committed.columns.str.strip().str.lower()
 
         if "capa number" in df_committed.columns:
@@ -112,7 +105,6 @@ def load_data():
 df = load_data()
 
 st.markdown("<h1>CAPA DASHBOARD</h1>", unsafe_allow_html=True)
-
 
 # ==========================
 # SECTION: Indicators
