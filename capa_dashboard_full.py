@@ -565,114 +565,122 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 # ==========================
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
+# Obtener la semana actual ISO
 current_week = date.today().isocalendar()[1]
 weeks_real = list(range(33, current_week + 1))
-weeks_prediction = list(range(current_week + 1, current_week + 5))
+weeks_prediction = list(range(current_week + 1, current_week + 5))  # 4 semanas de proyección
 
 # Filtrar solo sitio 1100
 capa_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
-capa_1100["Current Due Date"] = pd.to_datetime(capa_1100["Current Due Date"], errors="coerce")
-capa_1100["committed date"] = pd.to_datetime(capa_1100.get("committed date"), errors="coerce")
 
-# Determinar backlog inicial (CAPAs overdue reales al inicio del periodo)
+# Determinar backlog inicial (cantidad de CAPAs overdue reales al inicio del periodo)
 capa_1100["Status"] = capa_1100["Current Due Date"].apply(
     lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time"
 )
 backlog_inicial = capa_1100[capa_1100["Status"] == "Overdue"]["capa number"].nunique()
 
-if backlog_inicial == 0:
-    st.warning("No overdue CAPAs at site 1100 to start the recovery calculation.")
-else:
-    capa_1100["week_due"] = capa_1100["Current Due Date"].dt.isocalendar().week
-    capa_1100["week_committed"] = capa_1100["committed date"].dt.isocalendar().week
+# --- Datos reales (hasta semana actual) ---
+capa_1100["week_due"] = pd.to_datetime(capa_1100["Current Due Date"], errors="coerce").dt.isocalendar().week
+capa_1100["week_committed"] = pd.to_datetime(capa_1100["committed date"], errors="coerce").dt.isocalendar().week
 
-    backlog = [backlog_inicial]
-    recovered_total = 0
-    recovery_rate = []
+backlog = [backlog_inicial]
+recovered_total = 0
+recovery_rate = []
 
-    # --- Datos reales ---
-    for w in range(weeks_real[0] + 1, current_week + 1):
-        nuevas_overdue = capa_1100[(capa_1100["Status"] == "On time") & (capa_1100["week_due"] == w)]["capa number"].nunique()
-        recuperadas = capa_1100[(capa_1100["Status"] == "Overdue") & (capa_1100["week_committed"] == w)]["capa number"].nunique()
+for w in range(weeks_real[0], current_week + 1):
+    # CAPAs que vencen en la semana (nuevas overdue)
+    nuevas_overdue = capa_1100[
+        (capa_1100["Status"] == "On time") & (capa_1100["week_due"] == w)
+    ]["capa number"].nunique()
+    # CAPAs que se recuperan en la semana (committed date)
+    recuperadas = capa_1100[
+        (capa_1100["Status"] == "Overdue") & (capa_1100["week_committed"] == w)
+    ]["capa number"].nunique()
 
-        backlog_actual = backlog[-1] + nuevas_overdue - recuperadas
-        backlog.append(backlog_actual)
-        recovered_total += recuperadas
-        rate = (recovered_total / backlog_inicial) * 100 if backlog_inicial > 0 else 0
-        recovery_rate.append(round(rate, 1))
+    backlog_actual = backlog[-1] + nuevas_overdue - recuperadas
+    backlog.append(backlog_actual)
+    recovered_total += recuperadas
+    recovery_rate.append(round((recovered_total / backlog_inicial) * 100))
 
-    # --- Predicción ---
-    backlog_pred = backlog[-1]
-    recovered_pred_total = recovered_total
-    production_line = []
-    recovery_rate_projection = []
+# --- Proyección (4 semanas siguientes) ---
+production_line = []
+recovery_rate_projection = []
+backlog_pred = backlog[-1]
+recovered_pred_total = recovered_total
 
-    for w in weeks_prediction:
-        nuevas_overdue = capa_1100[(capa_1100["Status"] == "On time") & (capa_1100["week_due"] == w)]["capa number"].nunique()
-        recuperadas = capa_1100[(capa_1100["Status"] == "Overdue") & (capa_1100["week_committed"] == w)]["capa number"].nunique()
+for w in weeks_prediction:
+    nuevas_overdue = capa_1100[
+        (capa_1100["Status"] == "On time") & (capa_1100["week_due"] == w)
+    ]["capa number"].nunique()
+    recuperadas = capa_1100[
+        (capa_1100["Status"] == "Overdue") & (capa_1100["week_committed"] == w)
+    ]["capa number"].nunique()
 
-        backlog_pred = backlog_pred + nuevas_overdue - recuperadas
-        recovered_pred_total += recuperadas
-        production_line.append(backlog_pred)
-        rate = (recovered_pred_total / backlog_inicial) * 100 if backlog_inicial > 0 else 0
-        recovery_rate_projection.append(round(rate, 1))
+    backlog_pred = backlog_pred + nuevas_overdue - recuperadas
+    recovered_pred_total += recuperadas
+    production_line.append(backlog_pred)
+    recovery_rate_projection.append(round((recovered_pred_total / backlog_inicial) * 100))
 
-    df_recovery = pd.DataFrame({
-        "Week": weeks_real + weeks_prediction,
-        "Backlog": backlog + production_line,
-        "Recovery Rate (%)": recovery_rate + recovery_rate_projection
-    })
+# --- DataFrame resumen ---
+df_recovery = pd.DataFrame({
+    "Week": weeks_real + weeks_prediction,
+    "Backlog": backlog[:-1] + production_line,
+    "Recovery Rate (%)": recovery_rate + recovery_rate_projection
+})
+st.dataframe(df_recovery, use_container_width=True)
 
-    st.dataframe(df_recovery, use_container_width=True)
+# --- Gráfico ---
+fig = go.Figure()
 
-    # --- Gráfico ---
-    fig = go.Figure()
+# Línea real (Backlog)
+fig.add_trace(go.Scatter(
+    x=weeks_real, y=backlog[:-1],
+    mode="lines+markers+text",
+    name="Backlog (Real)",
+    text=backlog[:-1], textposition="top center",
+    line=dict(color="red", width=2)
+))
 
-    fig.add_trace(go.Scatter(
-        x=weeks_real, y=backlog,
-        mode="lines+markers+text",
-        name="Backlog (Real)",
-        text=backlog, textposition="top center",
-        line=dict(color="red", width=2)
-    ))
+# Línea predicción (Backlog)
+fig.add_trace(go.Scatter(
+    x=weeks_prediction, y=production_line,
+    mode="lines+markers+text",
+    name="Prediction Line",
+    text=production_line, textposition="bottom center",
+    line=dict(color="orange", width=2, dash="dash")
+))
 
-    fig.add_trace(go.Scatter(
-        x=weeks_prediction, y=production_line,
-        mode="lines+markers+text",
-        name="Prediction Line",
-        text=production_line, textposition="bottom center",
-        line=dict(color="orange", width=2, dash="dash")
-    ))
+# Línea Recovery Rate (eje secundario)
+fig.add_trace(go.Scatter(
+    x=weeks_real, y=recovery_rate,
+    mode="lines+markers+text",
+    name="Recovery Rate (Real)",
+    text=[f"{v}%" for v in recovery_rate],
+    textposition="top center",
+    line=dict(color="blue", width=2),
+    yaxis="y2"
+))
 
-    fig.add_trace(go.Scatter(
-        x=weeks_real, y=recovery_rate,
-        mode="lines+markers+text",
-        name="Recovery Rate (Real)",
-        text=[f"{v}%" for v in recovery_rate],
-        textposition="top center",
-        line=dict(color="blue", width=2),
-        yaxis="y2"
-    ))
+fig.add_trace(go.Scatter(
+    x=weeks_prediction, y=recovery_rate_projection,
+    mode="lines+markers+text",
+    name="Recovery Rate (Projected)",
+    text=[f"{v}%" for v in recovery_rate_projection],
+    textposition="top center",
+    line=dict(color="blue", width=2, dash="dot"),
+    yaxis="y2", showlegend=False
+))
 
-    fig.add_trace(go.Scatter(
-        x=weeks_prediction, y=recovery_rate_projection,
-        mode="lines+markers+text",
-        name="Recovery Rate (Projected)",
-        text=[f"{v}%" for v in recovery_rate_projection],
-        textposition="top center",
-        line=dict(color="blue", width=2, dash="dot"),
-        yaxis="y2"
-    ))
+fig.update_layout(
+    title=dict(text="Backlog and Recovery Rate Trend (Site 1100)", font=dict(size=18)),
+    xaxis=dict(title="Week", tickmode="linear", dtick=1),
+    yaxis=dict(title="Backlog"),
+    yaxis2=dict(title="Recovery Rate (%)", overlaying="y", side="right", range=[0, 100]),
+    legend=dict(orientation="h", y=-0.2)
+)
 
-    fig.update_layout(
-        title=dict(text="Backlog and Recovery Rate Trend (Site 1100)", font=dict(size=18)),
-        xaxis=dict(title="Week", tickmode="linear", dtick=1),
-        yaxis=dict(title="Backlog"),
-        yaxis2=dict(title="Recovery Rate (%)", overlaying="y", side="right", range=[0, 100]),
-        legend=dict(orientation="h", y=-0.2)
-    )
+st.plotly_chart(fig, use_container_width=True, key="fig_recovery_overview_updated")
 
-    st.plotly_chart(fig, use_container_width=True, key="fig_recovery_overview_updated")
 # ==========================
 # Annual Trend Charts
 # ==========================
