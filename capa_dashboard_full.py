@@ -581,11 +581,12 @@ new_overdue_per_week = []
 for w in weeks_real:
     nuevas = capa_inworks_1100[
         (capa_inworks_1100["Current Due Date"].dt.isocalendar().week == w) &
-        (capa_inworks_1100["Current Due Date"] <= TODAY_DATE)
+        (capa_inworks_1100["Current Due Date"].dt.date <= TODAY_DATE)
     ]["capa number"].nunique()
+
     recuperadas = capa_inworks_1100[
         (capa_inworks_1100["committed date"].dt.isocalendar().week == w) &
-        (capa_inworks_1100["committed date"] <= TODAY_DATE)
+        (capa_inworks_1100["committed date"].dt.date <= TODAY_DATE)
     ]["capa number"].nunique()
 
     backlog.append(backlog[-1] + nuevas - recuperadas)
@@ -599,11 +600,12 @@ production_line = [backlog[-1]]
 for w in weeks_prediction[1:]:
     nuevas = capa_inworks_1100[
         (capa_inworks_1100["Current Due Date"].dt.isocalendar().week == w) &
-        (capa_inworks_1100["Current Due Date"] > TODAY_DATE)
+        (capa_inworks_1100["Current Due Date"].dt.date > TODAY_DATE)
     ]["capa number"].nunique()
+
     recuperadas = capa_inworks_1100[
         (capa_inworks_1100["committed date"].dt.isocalendar().week == w) &
-        (capa_inworks_1100["committed date"] > TODAY_DATE)
+        (capa_inworks_1100["committed date"].dt.date > TODAY_DATE)
     ]["capa number"].nunique()
 
     next_val = production_line[-1] + nuevas - recuperadas
