@@ -562,21 +562,24 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 # ==========================
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
-# --- Definición de semanas ---
-weeks_real = list(range(33, 46))  # Hasta la semana actual (45)
+# --- Semanas ---
+weeks_real = list(range(33, 46))     # Fijas hasta la semana actual (45)
 weeks_prediction = list(range(41, 56))  # Predicciones fijas hasta 55
 
-# --- Backlog y Recovery reales fijos ---
+# --- VALORES FIJOS (no se recalculan nunca) ---
 initial_backlog = 11
-backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4]
+backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4]  # hasta S45
 total_recovery_real = [2, 3, 4, 5, 6, 8, 8, 8, 8, 8, 8, 8, 9]
 recovery_rate_real = [18, 27, 36, 45, 55, 73, 73, 73, 73, 73, 73, 73, 82]
 
-# --- Predicción previa fija (S41–S45) + proyección dinámica (S46–S55) ---
-prediction_line = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3}  # fijas
-recovery_rate_projection = {41: 73, 42: 73, 43: 73, 44: 73, 45: 64}
+# --- PREDICCIÓN FIJA hasta S45 ---
+prediction_line_fixed = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3}
+recovery_rate_pred_fixed = {41: 73, 42: 73, 43: 73, 44: 73, 45: 55}
 
-# --- Cálculo de proyección (S46–S55) basado en committed y to-be-overdue ---
+# --- PROYECCIÓN automática (S46–S55) ---
+prediction_line = prediction_line_fixed.copy()
+recovery_rate_projection = recovery_rate_pred_fixed.copy()
+
 try:
     capa_inworks_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
     overdue_capas = capa_inworks_1100[capa_inworks_1100["Status"] == "Overdue"].copy()
@@ -591,7 +594,7 @@ try:
     # CAPAs con committed date → recuperadas
     for _, row in overdue_capas.iterrows():
         committed = row.get("committed date", None)
-        if pd.notna(committed) and str(committed).strip() not in ["", "TBD"]:
+        if pd.notna(committed) and str(committed).strip().upper() != "TBD":
             committed_date = pd.to_datetime(committed, errors="coerce")
             if pd.notna(committed_date):
                 wk = get_week_number(committed_date)
@@ -604,7 +607,6 @@ try:
         (capa_inworks_1100["at risk"].astype(str)
          .str.lower().str.contains("risk|to be overdue", na=False))
     ].copy()
-
     for _, row in capas_to_be_overdue.iterrows():
         due_date = row.get("Current Due Date", None)
         if pd.notna(due_date):
@@ -613,26 +615,25 @@ try:
             if wk in weeks_prediction:
                 production_new_overdue[weeks_prediction.index(wk)] += 1
 
-    # Proyección: parte desde el backlog real actual (4)
+    # Backlog proyectado a partir del valor real actual (4 en S45)
     backlog_proj = [backlog_real[-1]]
     total_recovery_proj = [total_recovery_real[-1]]
-    recovery_rate_proj = [recovery_rate_real[-1]]
+    rate_proj = [recovery_rate_real[-1]]
 
     for i, wk in enumerate(weeks_prediction):
-        if wk <= 45:  # semanas ya fijas
+        if wk <= 45:
             continue
         next_backlog = backlog_proj[-1] + production_new_overdue[i] - production_recovered[i]
         backlog_proj.append(next_backlog)
         prediction_line[wk] = next_backlog
 
-        next_total_rec = total_recovery_proj[-1] + production_recovered[i]
-        total_recovery_proj.append(next_total_rec)
-
-        next_rate = round((next_total_rec / initial_backlog) * 100)
+        next_total = total_recovery_proj[-1] + production_recovered[i]
+        total_recovery_proj.append(next_total)
+        next_rate = round((next_total / initial_backlog) * 100)
         recovery_rate_projection[wk] = min(100, max(0, next_rate))
 
 except Exception as e:
-    st.warning(f"No se pudo calcular proyección: {e}")
+    st.warning(f"No se pudo calcular la proyección: {e}")
 
 # --- DataFrame de salida ---
 recovery_data = {"": ["Backlog", "Total Recovery", "Recovery Rate", "Prediction Line"]}
@@ -647,20 +648,21 @@ for wk in range(33, 56):
         ]
     elif wk in weeks_prediction:
         recovery_data[str(wk)] = ["-", "-", "-", prediction_line.get(wk, "-")]
+
 df_recovery = pd.DataFrame(recovery_data)
 st.dataframe(df_recovery, use_container_width=True)
 
 # --- Gráfico ---
 fig = go.Figure()
 
-# Backlog real (roja sólida)
+# Línea roja (Backlog real)
 fig.add_trace(go.Scatter(
     x=weeks_real, y=backlog_real, mode="lines+markers+text",
-    name="Backlog (real)", text=backlog_real, textposition="top center",
+    name="Backlog", text=backlog_real, textposition="top center",
     line=dict(color="red", width=2)
 ))
 
-# Predicción backlog (naranja discontinua)
+# Línea amarilla discontinua (Prediction Line total)
 fig.add_trace(go.Scatter(
     x=list(prediction_line.keys()), y=list(prediction_line.values()),
     mode="lines+markers+text", name="Prediction Line",
@@ -669,7 +671,7 @@ fig.add_trace(go.Scatter(
     line=dict(color="orange", width=2, dash="dash")
 ))
 
-# Recovery Rate real (azul sólida)
+# Línea azul sólida (Recovery Rate real)
 fig.add_trace(go.Scatter(
     x=weeks_real, y=recovery_rate_real,
     mode="lines+markers+text", name="Recovery Rate",
@@ -678,7 +680,7 @@ fig.add_trace(go.Scatter(
     line=dict(color="blue", width=2), yaxis="y2"
 ))
 
-# Recovery Rate proyectado (azul punteada)
+# Línea azul punteada (Recovery Rate proyectado)
 fig.add_trace(go.Scatter(
     x=list(recovery_rate_projection.keys()),
     y=list(recovery_rate_projection.values()),
@@ -695,7 +697,6 @@ fig.update_layout(
     yaxis2=dict(title="Recovery Rate (%)", overlaying="y", side="right", range=[0, 100]),
     legend=dict(orientation="h", y=-0.2)
 )
-
 st.plotly_chart(fig, use_container_width=True, key="fig_recovery_overview")
 
 # ==========================
