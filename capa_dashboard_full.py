@@ -563,21 +563,23 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
 # --- Semanas ---
-weeks_real = list(range(33, 46))        # hasta la semana actual (45)
-weeks_prediction = list(range(46, 56))  # proyección desde la 46
+weeks_real = list(range(33, 46))     # Fijas hasta la semana actual (45)
+weeks_prediction = list(range(41, 56))  # Predicciones fijas hasta 55
 
 # --- VALORES FIJOS (no se recalculan nunca) ---
 initial_backlog = 11
+backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4]  # hasta S45
+total_recovery_real = [2, 3, 4, 5, 6, 8, 8, 8, 8, 8, 8, 8, 9]
+recovery_rate_real = [18, 27, 36, 45, 55, 73, 73, 73, 73, 73, 73, 73, 82]
 
-# Datos reales fijos (semana 33–45)
-total_overdue_real = [11, 11, 11, 11, 11, 11, 11, 3, 3, 3, 3, 5, 4]
-total_recovery_real = [2, 3, 4, 5, 5, 6, 8, 8, 8, 8, 8, 8, 9]
-recovery_rate_real = [18, 27, 36, 45, 45, 55, 73, 73, 73, 73, 73, 73, 82]
+# --- PREDICCIÓN FIJA hasta S45 ---
+prediction_line_fixed = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3}
+recovery_rate_pred_fixed = {41: 73, 42: 73, 43: 73, 44: 73, 45: 55}
 
-# --- Predicción fija hasta semana 45 (ya validada manualmente) ---
-prediction_line = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3}
+# --- PROYECCIÓN automática (S46–S55) ---
+prediction_line = prediction_line_fixed.copy()
+recovery_rate_projection = recovery_rate_pred_fixed.copy()
 
-# === PROYECCIÓN AUTOMÁTICA DESDE S46 ===
 try:
     capa_inworks_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
     overdue_capas = capa_inworks_1100[capa_inworks_1100["Status"] == "Overdue"].copy()
@@ -599,7 +601,7 @@ try:
                 if wk in weeks_prediction:
                     production_recovered[weeks_prediction.index(wk)] += 1
 
-    # CAPAs "to be overdue" → nuevas overdue
+    # CAPAs to be overdue → nuevas overdue
     capas_to_be_overdue = capa_inworks_1100[
         (capa_inworks_1100["Status"] == "On time") &
         (capa_inworks_1100["at risk"].astype(str)
@@ -613,44 +615,89 @@ try:
             if wk in weeks_prediction:
                 production_new_overdue[weeks_prediction.index(wk)] += 1
 
-    # Backlog proyectado parte del último valor real (4)
-    backlog_proj = [total_overdue_real[-1]]
+    # Backlog proyectado a partir del valor real actual (4 en S45)
+    backlog_proj = [backlog_real[-1]]
     total_recovery_proj = [total_recovery_real[-1]]
-    recovery_rate_proj = [recovery_rate_real[-1]]
+    rate_proj = [recovery_rate_real[-1]]
 
     for i, wk in enumerate(weeks_prediction):
+        if wk <= 45:
+            continue
         next_backlog = backlog_proj[-1] + production_new_overdue[i] - production_recovered[i]
         backlog_proj.append(next_backlog)
-        total_recovery_proj.append(total_recovery_proj[-1] + production_recovered[i])
-        next_rate = round(total_recovery_proj[-1] / initial_backlog * 100)
-        recovery_rate_proj.append(max(0, min(100, next_rate)))
         prediction_line[wk] = next_backlog
+
+        next_total = total_recovery_proj[-1] + production_recovered[i]
+        total_recovery_proj.append(next_total)
+        next_rate = round((next_total / initial_backlog) * 100)
+        recovery_rate_projection[wk] = min(100, max(0, next_rate))
 
 except Exception as e:
     st.warning(f"No se pudo calcular la proyección: {e}")
 
-# --- DataFrame final ---
-recovery_data = {"": ["Total Overdue", "Total Recovery", "Recovery Rate", "Prediction Line"]}
+# --- DataFrame de salida ---
+recovery_data = {"": ["Backlog", "Total Recovery", "Recovery Rate", "Prediction Line"]}
 for wk in range(33, 56):
     if wk in weeks_real:
         idx = weeks_real.index(wk)
         recovery_data[str(wk)] = [
-            total_overdue_real[idx],
+            backlog_real[idx],
             total_recovery_real[idx],
             f"{recovery_rate_real[idx]}%",
             prediction_line.get(wk, "-"),
         ]
-    else:
-        idx = weeks_prediction.index(wk)
-        recovery_data[str(wk)] = [
-            backlog_proj[idx],
-            total_recovery_proj[idx],
-            f"{recovery_rate_proj[idx]}%",
-            prediction_line.get(wk, "-"),
-        ]
+    elif wk in weeks_prediction:
+        recovery_data[str(wk)] = ["-", "-", "-", prediction_line.get(wk, "-")]
 
 df_recovery = pd.DataFrame(recovery_data)
 st.dataframe(df_recovery, use_container_width=True)
+
+# --- Gráfico ---
+fig = go.Figure()
+
+# Línea roja (Backlog real)
+fig.add_trace(go.Scatter(
+    x=weeks_real, y=backlog_real, mode="lines+markers+text",
+    name="Backlog", text=backlog_real, textposition="top center",
+    line=dict(color="red", width=2)
+))
+
+# Línea amarilla discontinua (Prediction Line total)
+fig.add_trace(go.Scatter(
+    x=list(prediction_line.keys()), y=list(prediction_line.values()),
+    mode="lines+markers+text", name="Prediction Line",
+    text=[str(v) for v in prediction_line.values()],
+    textposition="bottom center",
+    line=dict(color="orange", width=2, dash="dash")
+))
+
+# Línea azul sólida (Recovery Rate real)
+fig.add_trace(go.Scatter(
+    x=weeks_real, y=recovery_rate_real,
+    mode="lines+markers+text", name="Recovery Rate",
+    text=[f"{v}%" for v in recovery_rate_real],
+    textposition="top center",
+    line=dict(color="blue", width=2), yaxis="y2"
+))
+
+# Línea azul punteada (Recovery Rate proyectado)
+fig.add_trace(go.Scatter(
+    x=list(recovery_rate_projection.keys()),
+    y=list(recovery_rate_projection.values()),
+    mode="lines+markers+text", name="Recovery Rate (Projected)",
+    text=[f"{v}%" for v in recovery_rate_projection.values()],
+    textposition="top center",
+    line=dict(color="blue", width=2, dash="dot"), yaxis="y2", showlegend=False
+))
+
+fig.update_layout(
+    title="Backlog, Prediction Line and Recovery Rate Trend",
+    xaxis=dict(title="Week", tickmode="linear", dtick=1, range=[32.5, 55.5]),
+    yaxis=dict(title="Backlog / Production"),
+    yaxis2=dict(title="Recovery Rate (%)", overlaying="y", side="right", range=[0, 100]),
+    legend=dict(orientation="h", y=-0.2)
+)
+st.plotly_chart(fig, use_container_width=True, key="fig_recovery_overview")
 
 # ==========================
 # Annual Trend Charts
