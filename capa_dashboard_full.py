@@ -593,13 +593,13 @@ weeks_prediction = list(range(41, 56))  # Predicciones fijas hasta 55
 
 # --- VALORES FIJOS (no se recalculan nunca) ---
 initial_backlog = 11
-backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4]  # hasta S45
-total_recovery_real = [2, 3, 4, 5, 6, 8, 8, 8, 8, 8, 8, 6, 7]
-recovery_rate_real = [18, 27, 36, 45, 55, 73, 73, 73, 73, 73, 73, 55, 64]
+backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4,5]  # hasta S45
+total_recovery_real = [2, 3, 4, 5, 6, 8, 8, 8, 8, 8, 8, 6, 7,6]
+recovery_rate_real = [18, 27, 36, 45, 55, 73, 73, 73, 73, 73, 73, 55, 64,55]
 
 # --- PREDICCIÓN FIJA hasta S45 ---
 prediction_line_fixed = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3}
-recovery_rate_pred_fixed = {41: 73, 42: 73, 43: 73, 44: 73, 45: 55}
+recovery_rate_pred_fixed = {41: 73, 42: 73, 43: 73, 44: 55, 45: 73}
 
 # --- PROYECCIÓN automática (S46–S55) ---
 prediction_line = prediction_line_fixed.copy()
