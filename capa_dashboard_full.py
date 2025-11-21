@@ -406,28 +406,50 @@ with colB:
 # ==========================
 # Overdue CAPAs Table
 # ==========================
+
+# Use last Friday as the reference date
+today_real = date.today()
+weekday = today_real.weekday()      # Monday=0 ... Sunday=6
+days_since_friday = (weekday - 4) % 7
+FRIDAY_DATE = today_real - timedelta(days=days_since_friday)
+TODAY_DATE = FRIDAY_DATE
+
 st.markdown("<h2>Overdue CAPAs</h2>", unsafe_allow_html=True)
 
-overdue_all = capa_inworks[capa_inworks["Status"] == "Overdue"].copy()
+overdue_all = capa_inworks[capa_inworks["Current Due Date"].apply(
+    lambda d: pd.notna(d) and d < TODAY_DATE
+)].copy()
 
-# Solo mostrar estas columnas (SIN At Risk, CON Owner y Coordinator)
-columns_to_show = ["capa number", "responsible site", "Phase", "Current Due Date"]
+# Columnas a mostrar (agregamos Title después de CAPA Number)
+columns_to_show = [
+    "capa number",
+]
+
+if "title" in overdue_all.columns:
+    columns_to_show.append("title")
+
+columns_to_show.extend([
+    "responsible site",
+    "Phase",
+    "Current Due Date"
+])
 
 # Agregar committed date si existe
 if "committed date" in overdue_all.columns:
     columns_to_show.append("committed date")
-# Agregar owner y coordinator
+
+# Owner y Coordinator
 if "capa owner name" in overdue_all.columns:
     columns_to_show.append("capa owner name")
 if "capa coordinator name" in overdue_all.columns:
     columns_to_show.append("capa coordinator name")
 
-# Seleccionar solo esas columnas
 overdue_all = overdue_all[columns_to_show]
 
-# Renombrar para que se vea bien
+# Renombrar para presentación
 rename_dict = {
     "capa number": "CAPA Number",
+    "title": "Title",
     "responsible site": "Responsible Site"
 }
 if "committed date" in overdue_all.columns:
@@ -439,30 +461,28 @@ if "capa coordinator name" in overdue_all.columns:
 
 overdue_all = overdue_all.rename(columns=rename_dict)
 
-# Formatear Current Due Date (que sí es fecha)
-overdue_all["Current Due Date"] = pd.to_datetime(overdue_all["Current Due Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+# Formato de fechas
+overdue_all["Current Due Date"] = pd.to_datetime(
+    overdue_all["Current Due Date"], errors="coerce"
+).dt.strftime("%d-%b-%Y")
 
-# Formatear Committed Date: si es fecha convertir, si es texto dejar como está, si está vacío poner TBD
 if "Committed Date" in overdue_all.columns:
     def format_committed_date(val):
         if pd.isna(val) or val == "" or str(val).strip() == "":
             return "TBD"
-        try:
-            date_val = pd.to_datetime(val, errors="coerce")
-            if pd.notna(date_val):
-                return date_val.strftime("%d-%b-%Y")
-            else:
-                return val
-        except:
-            return val
-    
+        parsed = pd.to_datetime(val, errors="coerce")
+        if pd.notna(parsed):
+            return parsed.strftime("%d-%b-%Y")
+        return val
+
     overdue_all["Committed Date"] = overdue_all["Committed Date"].apply(format_committed_date)
 
-# Ordenar por fase y fecha
+# Orden por fase y fecha
 phase_order = {"Investigation": 1, "Implementation": 2, "Effectiveness Monitoring": 3}
 overdue_all["PhaseOrder"] = overdue_all["Phase"].map(phase_order)
-overdue_all = overdue_all.sort_values(by=["PhaseOrder", "Current Due Date"], ascending=[True, True])
-overdue_all = overdue_all.drop(columns="PhaseOrder").reset_index(drop=True)
+overdue_all = overdue_all.sort_values(
+    by=["PhaseOrder", "Current Due Date"], ascending=[True, True]
+).drop(columns="PhaseOrder").reset_index(drop=True)
 
 st.dataframe(overdue_all)
 
@@ -471,11 +491,18 @@ st.dataframe(overdue_all)
 # ==========================
 st.markdown("<h2>CAPAs due in the next 2 months</h2>", unsafe_allow_html=True)
 
-# Calcular el rango del próximo mes
+# Usar siempre el viernes como referencia
+today_real = date.today()
+weekday = today_real.weekday()
+days_since_friday = (weekday - 4) % 7
+FRIDAY_DATE = today_real - timedelta(days=days_since_friday)
+TODAY_DATE = FRIDAY_DATE
+
+# Rango de 60 días desde el "viernes"
 next_month_start = TODAY_DATE + timedelta(days=1)
 next_month_end = TODAY_DATE + timedelta(days=60)
 
-# Filtrar CAPAs que vencen en el próximo mes (que no estén overdue) Y que sean del sitio 1100
+# Filtro para sitio 1100, On Time y dentro del rango
 next_month_capas = capa_inworks[
     (capa_inworks["Status"] == "On time") &
     (capa_inworks["Current Due Date"] >= next_month_start) &
@@ -483,13 +510,17 @@ next_month_capas = capa_inworks[
     (capa_inworks["responsible site"] == "1100")
 ].copy()
 
-# Columnas a mostrar en orden: CAPA Number, Title, Phase, Owner, Coordinator, Current Due Date, To Be Overdue, Extensions
+# Columnas (agregamos TITLE después de CAPA Number)
 columns_next_month = ["capa number"]
 
 if "title" in next_month_capas.columns:
     columns_next_month.append("title")
 
-columns_next_month.extend(["responsible site", "Phase", "Current Due Date"])
+columns_next_month.extend([
+    "responsible site",
+    "Phase",
+    "Current Due Date",
+])
 
 if "capa owner name" in next_month_capas.columns:
     columns_next_month.append("capa owner name")
@@ -502,21 +533,20 @@ if "due_date_extensions" in next_month_capas.columns:
 
 next_month_capas = next_month_capas[columns_next_month]
 
-# Poner valores por defecto ANTES de renombrar
+# Formateo To Be Overdue (si existe)
 if "at risk" in next_month_capas.columns:
-    def format_to_be_overdue(val):
+    def format_at_risk(val):
         if pd.isna(val) or val == "" or str(val).strip() == "" or val is None or str(val).lower() == "none":
             return "On Time"
         return val
-    next_month_capas["at risk"] = next_month_capas["at risk"].apply(format_to_be_overdue)
+    next_month_capas["at risk"] = next_month_capas["at risk"].apply(format_at_risk)
 
-# Renombrar columnas
+# Renombrar para presentación
 rename_dict_next = {
     "capa number": "CAPA Number",
+    "title": "Title",
     "responsible site": "Responsible Site"
 }
-if "title" in next_month_capas.columns:
-    rename_dict_next["title"] = "Title"
 if "capa owner name" in next_month_capas.columns:
     rename_dict_next["capa owner name"] = "CAPA Owner"
 if "capa coordinator name" in next_month_capas.columns:
@@ -528,31 +558,26 @@ if "due_date_extensions" in next_month_capas.columns:
 
 next_month_capas = next_month_capas.rename(columns=rename_dict_next)
 
-# Formatear fecha
-next_month_capas["Current Due Date"] = pd.to_datetime(next_month_capas["Current Due Date"], errors="coerce").dt.strftime("%d-%b-%Y")
+# Formato fechas
+next_month_capas["Current Due Date"] = pd.to_datetime(
+    next_month_capas["Current Due Date"], errors="coerce"
+).dt.strftime("%d-%b-%Y")
 
-# Poner "On Time" en To Be Overdue cuando esté vacío o None
-if "To Be Overdue" in next_month_capas.columns:
-    def format_at_risk(val):
-        if pd.isna(val) or val == "" or str(val).strip() == "" or val is None or str(val).lower() == "none":
-            return "On Time"
-        return val
-    
-    next_month_capas["To Be Overdue"] = next_month_capas["To Be Overdue"].apply(format_at_risk)
-
-# Ordenar por fase y fecha
+# Orden fase + fecha
+phase_order = {"Investigation": 1, "Implementation": 2, "Effectiveness Monitoring": 3}
 next_month_capas["PhaseOrder"] = next_month_capas["Phase"].map(phase_order)
-next_month_capas = next_month_capas.sort_values(by=["PhaseOrder", "Current Due Date"], ascending=[True, True])
-next_month_capas = next_month_capas.drop(columns="PhaseOrder").reset_index(drop=True)
+next_month_capas = next_month_capas.sort_values(
+    by=["PhaseOrder", "Current Due Date"], ascending=[True, True]
+).drop(columns="PhaseOrder").reset_index(drop=True)
 
-# Aplicar estilo condicional a la columna To Be Overdue
+# Highlight "To Be Overdue"
 def highlight_to_be_overdue(row):
     styles = [''] * len(row)
     if "To Be Overdue" in next_month_capas.columns:
-        col_idx = list(next_month_capas.columns).index("To Be Overdue")
+        idx = next_month_capas.columns.get_loc("To Be Overdue")
         val = str(row["To Be Overdue"]).lower()
-        if "risk" in val or "to be overdue" in val:
-            styles[col_idx] = 'color: red; font-weight: bold'
+        if "risk" in val or "overdue" in val:
+            styles[idx] = 'color: red; font-weight: bold'
     return styles
 
 st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_container_width=True)
