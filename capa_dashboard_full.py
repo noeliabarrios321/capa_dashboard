@@ -593,7 +593,7 @@ weeks_prediction = list(range(41, 56))  # Predicciones fijas hasta 55
 
 # --- VALORES FIJOS (no se recalculan nunca) ---
 initial_backlog = 11
-backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4,5]  # hasta S45
+backlog_real = [11, 9, 8, 7, 6, 6, 6, 3, 3, 3, 3, 5, 4,5]  # hasta S46
 total_recovery_real = [2, 3, 4, 5, 6, 8, 8, 8, 8, 8, 8, 6, 7,6]
 recovery_rate_real = [18, 27, 36, 45, 55, 73, 73, 73, 73, 73, 73, 55, 64,55]
 
@@ -646,7 +646,7 @@ try:
     rate_proj = [recovery_rate_real[-1]]
 
     for i, wk in enumerate(weeks_prediction):
-        if wk <= 45:
+        if wk <= 46:
             continue
         next_backlog = backlog_proj[-1] + production_new_overdue[i] - production_recovered[i]
         backlog_proj.append(next_backlog)
