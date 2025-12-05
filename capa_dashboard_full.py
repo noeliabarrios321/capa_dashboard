@@ -408,7 +408,7 @@ with colB:
 # ==========================
 
 # Use last Friday as the reference date
-today_real = date.today()
+today_real <= date.today()
 weekday = today_real.weekday()      # Monday=0 ... Sunday=6
 days_since_friday = (weekday - 4) % 7
 FRIDAY_DATE = today_real - timedelta(days=days_since_friday)
