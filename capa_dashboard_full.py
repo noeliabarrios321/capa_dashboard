@@ -407,6 +407,7 @@ with colB:
 # Overdue CAPAs Table
 # ==========================
 
+from datetime import date, timedelta 
 # Use last Sunday as the reference date
 today_real = date.today()
 weekday = today_real.weekday()      # Monday=0 ... Sunday=6
