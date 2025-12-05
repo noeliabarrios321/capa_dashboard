@@ -407,12 +407,14 @@ with colB:
 # Overdue CAPAs Table
 # ==========================
 
-# Use last Friday as the reference date
-today_real <= date.today()
+# Use last Sunday as the reference date
+today_real = date.today()
 weekday = today_real.weekday()      # Monday=0 ... Sunday=6
-days_since_friday = (weekday - 4) % 7
-FRIDAY_DATE = today_real - timedelta(days=days_since_friday)
-TODAY_DATE = FRIDAY_DATE
+
+# Days since Sunday (6)
+days_since_sunday = (weekday - 6) % 7
+SUNDAY_DATE = today_real - timedelta(days=days_since_sunday)
+TODAY_DATE = SUNDAY_DATE
 
 st.markdown("<h2>Overdue CAPAs</h2>", unsafe_allow_html=True)
 
@@ -629,7 +631,7 @@ recovery_rate_pred_fixed = {
     46: 55,
 }
 
-# --- PROYECCIÓN automática (S47–S55) ---
+# --- PROYECCIÓN automática (S47–S52) ---
 prediction_line = prediction_line_fixed.copy()
 recovery_rate_projection = recovery_rate_pred_fixed.copy()
 
@@ -679,7 +681,7 @@ try:
     # Recovery Rate proyectado hasta S46
     rate_proj = [recovery_rate_real[-1]]
 
-    # Proyección S47–S55
+    # Proyección S47–S52
     for i, wk in enumerate(weeks_prediction):
         if wk <= 46:
             continue
