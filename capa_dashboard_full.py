@@ -590,82 +590,79 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 # ==========================
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
-# --- Función corregida: semana ISO real (1–52, reinicia cada año) ---
+# --- Función: semana ISO real (1–52)
 def get_week_number(date_val):
     if pd.isna(date_val):
         return None
     iso = pd.to_datetime(date_val).isocalendar()
     return int(iso.week)  # mantiene ciclo 1–52
 
-# --- Semanas reales con reinicio natural ---
-# Tus datos reales llegan hasta S49 y ahora agregamos S50–52 y S1–S3
+# --- Semanas reales (incluye reinicio 52→1)
 weeks_real = [
     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
-    45, 46, 47, 48, 49, 50, 51, 52, 1, 2, 3
+    45, 46, 47, 48, 49, 50, 51, 52,
+    1, 2, 3
 ]
 
-# Predicción: sigue desde S41 → S55 pero ajustando la numeración ISO
+# --- Semanas de predicción (también con reinicio)
 weeks_prediction = [
     41, 42, 43, 44, 45, 46,
-    47, 48, 49, 50, 51, 52, 1, 2, 3, 4
+    47, 48, 49, 50, 51, 52,
+    1, 2, 3, 4
 ]
 
-# --- VALORES FIJOS reales actualizados ---
+# --- VALORES FIJOS reales ---
 initial_backlog = 11
 
 backlog_real = [
     11, 9, 8, 7, 6, 6, 6,
     3, 3, 3, 3, 5, 4, 5,
-    5, 6, 7,     # S47–49
-    "-", "-", "-",  # S50–52 (si aún no tienes datos reales)
-    "-", "-", "-"   # S1–S3 del nuevo año
+    5, 6, 7,   # S47–S49
+    "-", "-", "-",  # S50–S52
+    "-", "-", "-"   # S1–S3
 ]
 
 total_recovery_real = [
     2, 3, 4, 5, 6, 8, 8,
     8, 8, 8, 8, 6, 7, 6,
-    6, 5, 4,     # S47–49
-    "-", "-", "-",  # S50–52
-    "-", "-", "-"   # S1–S3 nuevo año
+    6, 5, 4,   # S47–S49
+    "-", "-", "-",  # S50–S52
+    "-", "-", "-"   # S1–S3
 ]
 
 recovery_rate_real = [
     18, 27, 36, 45, 55, 73, 73,
     73, 73, 73, 73, 55, 64, 55,
-    55, 45, 36,     # S47–49
-    "-", "-", "-",  # S50–52
+    55, 45, 36,   # S47–S49
+    "-", "-", "-",  # S50–S52
     "-", "-", "-"   # S1–S3
 ]
 
-# Prediction Line fija (S41–S46)
-prediction_line_fixed = {
-    41: 3, 42: 3, 43: 3, 44: 5, 45: 3, 46: 3,
-}
+# --- Prediction Line fija (NO SE TOCA) ---
+prediction_line_fixed = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3, 46: 3}
+recovery_rate_pred_fixed = {41: 73, 42: 73, 43: 73, 44: 55, 45: 64, 46: 55}
 
-# Recovery rate pred fija (S41–S46)
-recovery_rate_pred_fixed = {
-    41: 73, 42: 73, 43: 73, 44: 55, 45: 64, 46: 55,
-}
-
-# --- PROYECCIÓN automática (mantiene Prediction Line exacta como estaba) ---
 prediction_line = prediction_line_fixed.copy()
 recovery_rate_projection = recovery_rate_pred_fixed.copy()
 
+# --- Proyección (la lógica se mantiene igual) ---
 try:
-    capa_inworks_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"]
-    overdue_capas = capa_inworks_1100[capa_inworks_1100["Status"] == "Overdue"]
+    capa_inworks_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
+    overdue_capas = capa_inworks_1100[capa_inworks_1100["Status"] == "Overdue"].copy()
 
     production_recovered = [0] * len(weeks_prediction)
     production_new_overdue = [0] * len(weeks_prediction)
 
+    # CAPAs con committed date (recovery)
     for _, row in overdue_capas.iterrows():
-        committed = row.get("committed date", None)
+        committed = row.get("committed date")
         if pd.notna(committed) and str(committed).strip().upper() != "TBD":
             committed_date = pd.to_datetime(committed, errors="coerce")
             wk = get_week_number(committed_date)
             if wk in weeks_prediction:
                 production_recovered[weeks_prediction.index(wk)] += 1
 
+    # CAPAs at risk → nuevas overdue
     capas_to_be_overdue = capa_inworks_1100[
         (capa_inworks_1100["Status"] == "On time") &
         (capa_inworks_1100["at risk"].astype(str).str.contains("risk|to be overdue", case=False, na=False))
@@ -677,33 +674,33 @@ try:
         if wk in weeks_prediction:
             production_new_overdue[weeks_prediction.index(wk)] += 1
 
-    # La predicción se mantiene igual que ahora (no se toca tu lógica)
-    backlog_proj = []
-    total_recovery_proj = []
-    rate_proj = []
-
 except Exception as e:
     st.warning(f"No se pudo calcular la proyección: {e}")
 
 # ======================
-# TABLA
+# TABLA 
 # ======================
 
 recovery_data = {"": ["Backlog", "Total Recovery", "Recovery Rate", "Prediction Line"]}
 
-for wk in range(len(weeks_prediction) + 33):
-    week = weeks_real[wk - 33] if wk - 33 < len(weeks_real) else None
-    if week in weeks_real:
-        idx = weeks_real.index(week)
-        recovery_data[str(week)] = [
-            backlog_real[idx],
-            total_recovery_real[idx],
-            f"{recovery_rate_real[idx]}%",
-            prediction_line.get(week, "-"),
-        ]
+# Semanas reales (ISO)
+for wk in weeks_real:
+    idx = weeks_real.index(wk)
+    recovery_data[str(wk)] = [
+        backlog_real[idx],
+        total_recovery_real[idx],
+        f"{recovery_rate_real[idx]}%",
+        prediction_line.get(wk, "-"),
+    ]
+
+# Semanas de predicción
+for wk in weeks_prediction:
+    if wk not in weeks_real:
+        recovery_data[str(wk)] = ["-", "-", "-", prediction_line.get(wk, "-")]
 
 df_recovery = pd.DataFrame(recovery_data)
 st.dataframe(df_recovery, use_container_width=True)
+
 
 # ==========================
 # Annual Trend Charts
