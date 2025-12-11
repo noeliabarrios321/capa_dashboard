@@ -599,22 +599,18 @@ initial_backlog = 11
 
 backlog_real = [
     11, 9, 8, 7, 6, 6, 6,
-    3, 3, 3, 3, 5, 4, 5,
-    5, 6, 7   # <- S47, S48, S49
+    3, 3, 3, 3, 5, 4, 5   # hasta S46
 ]
 
 total_recovery_real = [
     2, 3, 4, 5, 6, 8, 8,
-    8, 8, 8, 8, 6, 7, 6,
-    6, 5, 4   # S47, S48, S49
+    8, 8, 8, 8, 6, 7, 6   # hasta S46
 ]
 
 recovery_rate_real = [
     18, 27, 36, 45, 55, 73, 73,
-    73, 73, 73, 73, 55, 64, 55,
-    55, 45, 36   # S47–S49 = 6/11, 5/11, 4/11
+    73, 73, 73, 73, 55, 64, 55   # hasta S46
 ]
-
 
 # Prediction Line fija (S41–S46)
 prediction_line_fixed = {
