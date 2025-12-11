@@ -591,7 +591,7 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
 # --- Semanas ---
-weeks_real = list(range(33, 50))     # Semanas reales S33–S46
+weeks_real = list(range(33, 46))     # Semanas reales S33–S46
 weeks_prediction = list(range(41, 56))  # Predicciones S41–S55
 
 # --- VALORES FIJOS reales (S33–S46) ---
