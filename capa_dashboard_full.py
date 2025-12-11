@@ -1,4 +1,4 @@
-import pandas as pd
+dondimport pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
@@ -420,7 +420,7 @@ TODAY_DATE = SUNDAY_DATE
 st.markdown("<h2>Overdue CAPAs</h2>", unsafe_allow_html=True)
 
 overdue_all = capa_inworks[capa_inworks["Current Due Date"].apply(
-    lambda d: pd.notna(d) and d < TODAY_DATE
+    lambda d: pd.notna(d) and d <= TODAY_DATE
 )].copy()
 
 # Columnas a mostrar (agregamos Title después de CAPA Number)
