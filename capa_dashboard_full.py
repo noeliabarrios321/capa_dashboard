@@ -585,24 +585,92 @@ def highlight_to_be_overdue(row):
 
 st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_container_width=True)
 
-# ======================
-# GRÁFICO CORREGIDO (33 → 52 → 1 → 2 → 3)
-# ======================
+# ==========================
+# Recovery Overview Section
+# ==========================
+st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
-# Semanas internas en orden continuo 33..55
-x_internal_real = weeks_real                       # 33..49
-x_internal_pred = list(prediction_line.keys())     # 41..55
+# --- Funciones auxiliares de semanas ---
+def get_week_index(date_val):
+    if pd.isna(date_val):
+        return None
+    iso_week = int(pd.to_datetime(date_val).isocalendar().week)
+    return iso_week if iso_week >= 33 else 52 + iso_week
 
-# Construcción del eje X mostrando semanas ISO correctas
+def display_week(w):
+    return w if w <= 52 else w - 52
+
+# --- Semanas internas ---
+weeks_real = list(range(33, 50))        # S33–S49
+weeks_prediction = list(range(41, 56))  # S41–S55 (55 = ISO3)
+
+# --- Valores reales (S33–S49) ---
+initial_backlog = 11
+
+backlog_real = [
+    11, 9, 8, 7, 6, 6, 6,
+    3, 3, 3, 3, 5, 4, 5,
+    5, 6, 7
+]
+
+total_recovery_real = [
+    2, 3, 4, 5, 6, 8, 8,
+    8, 8, 8, 8, 6, 7, 6,
+    6, 5, 4
+]
+
+recovery_rate_real = [
+    18, 27, 36, 45, 55, 73, 73,
+    73, 73, 73, 73, 55, 64, 55,
+    55, 45, 36
+]
+
+# --- Prediction Line FIJA S41 → S55 ---
+prediction_line = {
+    41: 3, 42: 3, 43: 3, 44: 5, 45: 5, 46: 5,
+    47: 5, 48: 5, 49: 5, 50: 3, 51: 3, 52: 3,
+    53: 3,  # ISO1
+    54: 3,  # ISO2
+    55: 3   # ISO3
+}
+
+# -------------------------
+# TABLA RECOVERY OVERVIEW
+# -------------------------
+recovery_data = {"": ["Backlog", "Total Recovery", "Recovery Rate", "Prediction Line"]}
+
+for wk in weeks_real:
+    idx = weeks_real.index(wk)
+    recovery_data[str(display_week(wk))] = [
+        backlog_real[idx],
+        total_recovery_real[idx],
+        f"{recovery_rate_real[idx]}%",
+        prediction_line.get(wk, "-")
+    ]
+
+for wk in weeks_prediction:
+    col = str(display_week(wk))
+    if col not in recovery_data:
+        recovery_data[col] = ["-", "-", "-", prediction_line.get(wk, "-")]
+
+df_recovery = pd.DataFrame(recovery_data)
+st.dataframe(df_recovery, use_container_width=True)
+
+# -------------------------
+# GRÁFICO CORREGIDO
+# -------------------------
+
+x_internal_real = weeks_real
+x_internal_pred = list(prediction_line.keys())
+
 tickvals = list(range(33, 56))  # 33..55
-ticktext = [str(display_week(w)) for w in tickvals]  # 33..52,1,2,3
+ticktext = [str(display_week(w)) for w in tickvals]
 
 fig = go.Figure()
 
-# --- Backlog real (rojo) ---
+# Backlog (rojo)
 fig.add_trace(go.Scatter(
-    x=x_internal_real,
-    y=backlog_real,
+    x=x_internal_real, y=backlog_real,
     mode="lines+markers+text",
     name="Backlog",
     text=backlog_real,
@@ -610,7 +678,7 @@ fig.add_trace(go.Scatter(
     line=dict(color="red", width=2)
 ))
 
-# --- Prediction Line FIJA (naranja) ---
+# Prediction Line (naranja)
 fig.add_trace(go.Scatter(
     x=x_internal_pred,
     y=list(prediction_line.values()),
@@ -621,7 +689,7 @@ fig.add_trace(go.Scatter(
     line=dict(color="orange", width=2, dash="dash")
 ))
 
-# --- Recovery Rate real (azul) ---
+# Recovery Rate (azul)
 fig.add_trace(go.Scatter(
     x=x_internal_real,
     y=recovery_rate_real,
@@ -638,8 +706,8 @@ fig.update_layout(
     xaxis=dict(
         title="Week",
         tickmode="array",
-        tickvals=tickvals,   # semanas internas 33..55
-        ticktext=ticktext,   # display 33..52,1,2,3
+        tickvals=tickvals,
+        ticktext=ticktext,
         range=[32.5, 55.5]
     ),
     yaxis=dict(title="Backlog / Production"),
@@ -653,6 +721,7 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True, key="fig_recovery_overview")
+
 
 # ==========================
 # Annual Trend Charts
