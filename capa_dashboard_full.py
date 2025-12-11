@@ -110,7 +110,6 @@ def load_data():
 df = load_data()
 
 st.markdown("<h1>CAPA DASHBOARD</h1>", unsafe_allow_html=True)
-
 # ==========================
 # SECTION: Indicators
 # ==========================
@@ -122,8 +121,8 @@ weekday = today_real.weekday()              # Monday=0...Sunday=6
 days_since_sunday = (weekday - 6) % 7
 SUNDAY_DATE = today_real - timedelta(days=days_since_sunday)
 
-TODAY_DATE = SUNDAY_DATE            # Para comparaciones de overdue
-TODAY = pd.to_datetime(SUNDAY_DATE) # Para calcular age_days
+TODAY_DATE = SUNDAY_DATE            # Para overdue
+TODAY = pd.to_datetime(SUNDAY_DATE) # Para age_days
 
 # ==========================
 # LIMPIEZA DE DATOS
@@ -200,7 +199,7 @@ phase_1100_tbl["Number"] = phase_1100_tbl["Number"].astype(int)
 phase_1100_tbl = phase_1100_tbl[["Phase", "Number", "Age (days)"]]
 
 # ==========================
-# OVERDUE CALCULATIONS (congelado al domingo)
+# OVERDUE (con ≤ al domingo)
 # ==========================
 
 df_inworks_due = df_inworks.copy()
@@ -222,8 +221,10 @@ capa_inworks["Phase"] = capa_inworks["phase"].apply(map_phase)
 capa_inworks = capa_inworks[capa_inworks["Phase"].notna()].copy()
 
 capa_inworks["due_date"] = capa_inworks["current phase due date"].dt.date
+
+# 🔥 CORRECCIÓN 1 — ≤ en overdue
 capa_inworks["Status"] = capa_inworks["due_date"].apply(
-    lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time"
+    lambda d: "Overdue" if (pd.notna(d) and d <= TODAY_DATE) else "On time"
 )
 
 overdue_global = capa_inworks[capa_inworks["Status"] == "Overdue"].groupby("Phase")["capa number"].nunique().to_dict()
@@ -267,6 +268,7 @@ def make_bar_chart_totals_only(df, title):
     phase_status = df.groupby(["Phase", "Status"]).agg(
         CAPAs=("capa number", "nunique")
     ).reset_index()
+
     phase_status = phase_status.pivot(index="Phase", columns="Status", values="CAPAs").fillna(0)
 
     for col in ["On time", "Overdue"]:
@@ -292,6 +294,7 @@ def make_bar_chart_totals_only(df, title):
         text=overdue, textposition="inside", insidetextanchor="middle"
     )
 
+    # totales arriba
     for i, total in enumerate(totals):
         fig.add_annotation(
             x=phases[i],
@@ -305,24 +308,26 @@ def make_bar_chart_totals_only(df, title):
     fig.update_layout(
         barmode="stack",
         title=dict(text=title, font=dict(size=18)),
-        legend=dict(orientation="h", y=-0.2),
-        uniformtext_minsize=8,
-        uniformtext_mode="hide"
+        legend=dict(orientation="h", y=-0.2)
     )
     return fig, phase_status
+
 
 # ==========================
 # BAR CHARTS
 # ==========================
 
 capa_inworks["Current Due Date"] = capa_inworks["current phase due date"].dt.date
+
+# 🔥 CORRECCIÓN 2 — ≤ en overdue (gráficos)
 capa_inworks["Status"] = capa_inworks["Current Due Date"].apply(
-    lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time"
+    lambda d: "Overdue" if (pd.notna(d) and d <= TODAY_DATE) else "On time"
 )
 
 fig_global, phase_global = make_bar_chart_totals_only(
     capa_inworks, "Global - In Works (On time vs Overdue)"
 )
+
 site_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
 
 fig_1100, phase_1100 = make_bar_chart_totals_only(
@@ -334,6 +339,7 @@ with col5:
     st.plotly_chart(fig_global, use_container_width=True, key="fig_global_ontime_overdue")
 with col6:
     st.plotly_chart(fig_1100, use_container_width=True, key="fig_1100_ontime_overdue")
+
 
 # ==========================================================
 # SECTION: CAPAs > 2 years - Table + Bar Chart with Totals
