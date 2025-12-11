@@ -114,14 +114,22 @@ st.markdown("<h1>CAPA DASHBOARD</h1>", unsafe_allow_html=True)
 # ==========================
 # SECTION: Indicators
 # ==========================
-
 st.markdown("<h1>Indicators</h1>", unsafe_allow_html=True)
 
-TODAY_DATE = date.today()
+# --- Fecha fija: último domingo ---
+today_real = date.today()
+weekday = today_real.weekday()              # Monday=0...Sunday=6
+days_since_sunday = (weekday - 6) % 7
+SUNDAY_DATE = today_real - timedelta(days=days_since_sunday)
+
+TODAY_DATE = SUNDAY_DATE
+TODAY = pd.to_datetime(SUNDAY_DATE)
 
 df_clean = df[df["capa number"].notna()].copy()
 df_clean["created date"] = pd.to_datetime(df_clean["created date"], errors="coerce")
 df_clean["closed date"] = pd.to_datetime(df_clean["closed date"], errors="coerce")
+
+# age_days congelado al domingo
 df_clean["age_days"] = (TODAY - df_clean["created date"]).dt.days
 
 # ------------------ General Numbers ------------------
@@ -144,6 +152,7 @@ with col2:
                            "Number": [int(total_1100), int(inworks_1100), int(closed_1100)]}))
 
 # ------------------ CAPAs by Phase ------------------
+
 def map_phase(p):
     p = str(p).lower().strip()
     if p in ["investigation", "investigation approval", "initiation verification"]:
@@ -158,7 +167,6 @@ df_inworks = df_clean[df_clean["primary status"].str.lower() != "closed"].copy()
 df_inworks["phase_grouped"] = df_inworks["phase"].apply(map_phase)
 df_inworks_tbl = df_inworks[df_inworks["phase_grouped"].notna()].copy()
 
-# Tablas de Phase (Number + Age)
 phase_global_tbl = df_inworks_tbl.groupby("phase_grouped").agg(
     Number=("capa number", "nunique"),
     Age=("age_days", "mean")
@@ -176,40 +184,31 @@ phase_1100_tbl["Age (days)"] = phase_1100_tbl["Age"].round(0).astype("Int64")
 phase_1100_tbl["Number"] = phase_1100_tbl["Number"].astype(int)
 phase_1100_tbl = phase_1100_tbl[["Phase", "Number", "Age (days)"]]
 
-# Cálculo de overdue para coloración
+# ------------------ Overdue (fijo al domingo) ------------------
+
 df_inworks_due = df_inworks.copy()
 df_inworks_due["current phase due date"] = pd.to_datetime(df_inworks_due["current phase due date"], errors="coerce")
 
-# IMPORTANTE: Agregamos las columnas committed date, at risk, owner y coordinator
 agg_dict = {
     "phase": "last",
     "responsible site": "last",
     "current phase due date": "max"
 }
 
-# Agregar columnas opcionales si existen
-if "committed date" in df_inworks_due.columns:
-    agg_dict["committed date"] = "last"
-if "at risk" in df_inworks_due.columns:
-    agg_dict["at risk"] = "last"
-if "due_date_extensions" in df_inworks_due.columns:
-    agg_dict["due_date_extensions"] = "max"
-if "capa owner name" in df_inworks_due.columns:
-    agg_dict["capa owner name"] = "last"
-if "capa coordinator name" in df_inworks_due.columns:
-    agg_dict["capa coordinator name"] = "last"
-if "title" in df_inworks_due.columns:
-    agg_dict["title"] = "last"
+optional_cols = ["committed date","at risk","due_date_extensions","capa owner name","capa coordinator name","title"]
+for col in optional_cols:
+    if col in df_inworks_due.columns:
+        agg_dict[col] = "last"
 
 capa_inworks = df_inworks_due.groupby("capa number").agg(agg_dict).reset_index()
-
 capa_inworks["Phase"] = capa_inworks["phase"].apply(map_phase)
 capa_inworks = capa_inworks[capa_inworks["Phase"].notna()].copy()
-capa_inworks["due_date"] = capa_inworks["current phase due date"].dt.date
-capa_inworks["status_due"] = capa_inworks["due_date"].apply(lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time")
 
-overdue_global = capa_inworks[capa_inworks["status_due"] == "Overdue"].groupby("Phase")["capa number"].nunique().to_dict()
-overdue_1100 = capa_inworks[(capa_inworks["responsible site"] == "1100") & (capa_inworks["status_due"] == "Overdue")] \
+capa_inworks["due_date"] = capa_inworks["current phase due date"].dt.date
+capa_inworks["Status"] = capa_inworks["due_date"].apply(lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time")
+
+overdue_global = capa_inworks[capa_inworks["Status"] == "Overdue"].groupby("Phase")["capa number"].nunique().to_dict()
+overdue_1100 = capa_inworks[(capa_inworks["responsible site"] == "1100") & (capa_inworks["Status"] == "Overdue")] \
                            .groupby("Phase")["capa number"].nunique().to_dict()
 
 thr_global = {"Investigation": 4, "Implementation": 6, "Effectiveness Monitoring": 4}
@@ -220,69 +219,29 @@ def style_phase_numbers(df_table, overdue_counts, thresholds):
         phase = row["Phase"]
         od = int(overdue_counts.get(phase, 0))
         limit = thresholds.get(phase, 9999)
-        
+
         if od > limit:
             num_style = "color: red; font-weight: bold"
         elif od == 0:
             num_style = "color: green; font-weight: bold"
         else:
             num_style = ""
-        
+
         return ["", num_style, ""]
-    
     return df_table.style.apply(lambda r: _row_style(r), axis=1)
 
-# Mostrar tablas de Phase
 col3, col4 = st.columns(2)
 with col3:
     st.markdown("<h2>CAPAs by Phase - Global</h2>", unsafe_allow_html=True)
     st.dataframe(style_phase_numbers(phase_global_tbl.copy(), overdue_global, thr_global))
-    
+
 with col4:
     st.markdown("<h2>CAPAs by Phase - Site 1100</h2>", unsafe_allow_html=True)
     st.dataframe(style_phase_numbers(phase_1100_tbl.copy(), overdue_1100, thr_1100))
 
 # ------------------ Gráficos On time vs Overdue ------------------
-def make_bar_chart_totals_only(df, title):
-    phase_status = df.groupby(["Phase","Status"]).agg(CAPAs=("capa number","nunique")).reset_index()
-    phase_status = phase_status.pivot(index="Phase", columns="Status", values="CAPAs").fillna(0)
-    for col in ["On time", "Overdue"]:
-        if col not in phase_status.columns:
-            phase_status[col] = 0
-    phase_status = phase_status.reindex(["Investigation","Implementation","Effectiveness Monitoring"]).fillna(0)
 
-    phases = phase_status.index.tolist()
-    on_time = phase_status["On time"].astype(int).tolist()
-    overdue = phase_status["Overdue"].astype(int).tolist()
-    totals = np.array(on_time) + np.array(overdue)
-
-    fig = go.Figure()
-    fig.add_bar(
-        x=phases, y=on_time, name="On time", marker_color="green",
-        text=on_time, textposition="inside", insidetextanchor="middle",
-        hovertemplate="Phase: %{x}<br>On time: %{y}<extra></extra>"
-    )
-    fig.add_bar(
-        x=phases, y=overdue, name="Overdue", marker_color="red",
-        text=overdue, textposition="inside", insidetextanchor="middle",
-        hovertemplate="Phase: %{x}<br>Overdue: %{y}<extra></extra>"
-    )
-
-    for i, total in enumerate(totals):
-        fig.add_annotation(
-            x=phases[i], y=totals[i] + max(totals)*0.05, text=str(total),
-            showarrow=False, yshift=5, font=dict(size=11)
-        )
-
-    fig.update_layout(
-        barmode="stack", 
-        title=dict(text=title, font=dict(size=18)),
-        legend=dict(orientation="h", y=-0.2),
-        uniformtext_minsize=8, uniformtext_mode="hide"
-    )
-    return fig, phase_status
-
-capa_inworks["Current Due Date"] = pd.to_datetime(capa_inworks["current phase due date"], errors="coerce").dt.date
+capa_inworks["Current Due Date"] = capa_inworks["current phase due date"].dt.date
 capa_inworks["Status"] = capa_inworks["Current Due Date"].apply(lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time")
 
 fig_global, phase_global = make_bar_chart_totals_only(capa_inworks, "Global - In Works (On time vs Overdue)")
@@ -294,6 +253,7 @@ with col5:
     st.plotly_chart(fig_global, use_container_width=True, key="fig_global_ontime_overdue")
 with col6:
     st.plotly_chart(fig_1100, use_container_width=True, key="fig_1100_ontime_overdue")
+
 
 # ==========================================================
 # SECTION: CAPAs > 2 years - Table + Bar Chart with Totals
