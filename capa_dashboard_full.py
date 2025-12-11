@@ -591,7 +591,7 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
 # --- Semanas ---
-weeks_real = list(range(33, 47))     # Semanas reales S33–S46
+weeks_real = list(range(33, 50))     # Semanas reales S33–S46
 weeks_prediction = list(range(41, 56))  # Predicciones S41–S55
 
 # --- VALORES FIJOS reales (S33–S46) ---
@@ -599,18 +599,22 @@ initial_backlog = 11
 
 backlog_real = [
     11, 9, 8, 7, 6, 6, 6,
-    3, 3, 3, 3, 5, 4, 5   # hasta S46
+    3, 3, 3, 3, 5, 4, 5,
+    5, 6, 7   # <- S47, S48, S49
 ]
 
 total_recovery_real = [
     2, 3, 4, 5, 6, 8, 8,
-    8, 8, 8, 8, 6, 7, 6   # hasta S46
+    8, 8, 8, 8, 6, 7, 6,
+    6, 5, 4   # S47, S48, S49
 ]
 
 recovery_rate_real = [
     18, 27, 36, 45, 55, 73, 73,
-    73, 73, 73, 73, 55, 64, 55   # hasta S46
+    73, 73, 73, 73, 55, 64, 55,
+    55, 45, 36   # S47–S49 = 6/11, 5/11, 4/11
 ]
+
 
 # Prediction Line fija (S41–S46)
 prediction_line_fixed = {
