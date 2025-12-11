@@ -590,117 +590,152 @@ st.dataframe(next_month_capas.style.apply(highlight_to_be_overdue, axis=1), use_
 # ==========================
 st.markdown("<h1>Recovery Overview</h1>", unsafe_allow_html=True)
 
-# --- Función: semana ISO real (1–52)
-def get_week_number(date_val):
+# --- Funciones auxiliares para manejo de semanas ---
+def get_week_index(date_val):
+    """
+    Convierte la semana ISO a un índice continuo:
+    - Si semana >=33 → se usa tal cual (33..52)
+    - Semana <33 → se asigna como 52 + semana (1→53, 2→54, 3→55, ...)
+    """
     if pd.isna(date_val):
         return None
-    iso = pd.to_datetime(date_val).isocalendar()
-    return int(iso.week)  # mantiene ciclo 1–52
+    iso_week = int(pd.to_datetime(date_val).isocalendar().week)
+    if iso_week >= 33:
+        return iso_week
+    else:
+        return 52 + iso_week
 
-# --- Semanas reales (incluye reinicio 52→1)
-weeks_real = [
-    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
-    45, 46, 47, 48, 49, 50, 51, 52,
-    1, 2, 3
-]
+def display_week(week_idx):
+    """
+    Convierte semanas internas:
+    33..52 → se muestran igual
+    53 → 1, 54 → 2, 55 → 3
+    """
+    w = int(week_idx)
+    return w if w <= 52 else w - 52
 
-# --- Semanas de predicción (también con reinicio)
-weeks_prediction = [
-    41, 42, 43, 44, 45, 46,
-    47, 48, 49, 50, 51, 52,
-    1, 2, 3, 4
-]
+# --- Semanas reales (S33–S49 internas) ---
+weeks_real = list(range(33, 50))  # 33..49
 
-# --- VALORES FIJOS reales ---
+# --- Semanas de predicción (internas 41–55) ---
+weeks_prediction = list(range(41, 56))  # 41..55 (55=ISO3)
+
+# --- VALORES FIJOS reales (S33–S49) ---
 initial_backlog = 11
 
 backlog_real = [
-    11, 9, 8, 7, 6, 6, 6,
-    3, 3, 3, 3, 5, 4, 5,
-    5, 6, 7,   # S47–S49
-    "-", "-", "-",  # S50–S52
-    "-", "-", "-"   # S1–S3
+    11, 9, 8, 7, 6, 6, 6,    # 33–39
+    3, 3, 3, 3, 5, 4, 5,     # 40–46
+    5, 6, 7                  # 47–49
 ]
 
 total_recovery_real = [
     2, 3, 4, 5, 6, 8, 8,
     8, 8, 8, 8, 6, 7, 6,
-    6, 5, 4,   # S47–S49
-    "-", "-", "-",  # S50–S52
-    "-", "-", "-"   # S1–S3
+    6, 5, 4
 ]
 
 recovery_rate_real = [
     18, 27, 36, 45, 55, 73, 73,
     73, 73, 73, 73, 55, 64, 55,
-    55, 45, 36,   # S47–S49
-    "-", "-", "-",  # S50–S52
-    "-", "-", "-"   # S1–S3
+    55, 45, 36
 ]
 
-# --- Prediction Line fija (NO SE TOCA) ---
-prediction_line_fixed = {41: 3, 42: 3, 43: 3, 44: 5, 45: 3, 46: 3}
-recovery_rate_pred_fixed = {41: 73, 42: 73, 43: 73, 44: 55, 45: 64, 46: 55}
-
-prediction_line = prediction_line_fixed.copy()
-recovery_rate_projection = recovery_rate_pred_fixed.copy()
-
-# --- Proyección (la lógica se mantiene igual) ---
-try:
-    capa_inworks_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
-    overdue_capas = capa_inworks_1100[capa_inworks_1100["Status"] == "Overdue"].copy()
-
-    production_recovered = [0] * len(weeks_prediction)
-    production_new_overdue = [0] * len(weeks_prediction)
-
-    # CAPAs con committed date (recovery)
-    for _, row in overdue_capas.iterrows():
-        committed = row.get("committed date")
-        if pd.notna(committed) and str(committed).strip().upper() != "TBD":
-            committed_date = pd.to_datetime(committed, errors="coerce")
-            wk = get_week_number(committed_date)
-            if wk in weeks_prediction:
-                production_recovered[weeks_prediction.index(wk)] += 1
-
-    # CAPAs at risk → nuevas overdue
-    capas_to_be_overdue = capa_inworks_1100[
-        (capa_inworks_1100["Status"] == "On time") &
-        (capa_inworks_1100["at risk"].astype(str).str.contains("risk|to be overdue", case=False, na=False))
-    ]
-
-    for _, row in capas_to_be_overdue.iterrows():
-        due_date = pd.to_datetime(row.get("Current Due Date"), errors="coerce")
-        wk = get_week_number(due_date)
-        if wk in weeks_prediction:
-            production_new_overdue[weeks_prediction.index(wk)] += 1
-
-except Exception as e:
-    st.warning(f"No se pudo calcular la proyección: {e}")
+# --- Prediction Line FIJA completa (S41 → S55) ---
+prediction_line = {
+    41: 3,
+    42: 3,
+    43: 3,
+    44: 5,
+    45: 5,
+    46: 5,
+    47: 5,
+    48: 5,
+    49: 5,
+    50: 3,
+    51: 3,
+    52: 3,
+    53: 3,   # ISO1
+    54: 3,   # ISO2
+    55: 3    # ISO3
+}
 
 # ======================
-# TABLA 
+# TABLA (valores reales + prediction line fija)
 # ======================
 
-recovery_data = {"": ["Backlog", "Total Recovery", "Recovery Rate", "Prediction Line"]}
+recovery_data = {
+    "": ["Backlog", "Total Recovery", "Recovery Rate", "Prediction Line"]
+}
 
-# Semanas reales (ISO)
+# Semanas reales (33–49 internas)
 for wk in weeks_real:
     idx = weeks_real.index(wk)
-    recovery_data[str(wk)] = [
+    recovery_data[str(display_week(wk))] = [
         backlog_real[idx],
         total_recovery_real[idx],
         f"{recovery_rate_real[idx]}%",
         prediction_line.get(wk, "-"),
     ]
 
-# Semanas de predicción
+# Semanas de predicción (41–55 internas)
 for wk in weeks_prediction:
-    if wk not in weeks_real:
-        recovery_data[str(wk)] = ["-", "-", "-", prediction_line.get(wk, "-")]
+    col = str(display_week(wk))
+    if col not in recovery_data:
+        recovery_data[col] = ["-", "-", "-", prediction_line.get(wk, "-")]
 
 df_recovery = pd.DataFrame(recovery_data)
 st.dataframe(df_recovery, use_container_width=True)
 
+# ======================
+# GRÁFICO
+# ======================
+
+fig = go.Figure()
+
+# Backlog real (rojo)
+fig.add_trace(go.Scatter(
+    x=[display_week(w) for w in weeks_real],
+    y=backlog_real,
+    mode="lines+markers+text",
+    name="Backlog",
+    text=backlog_real,
+    textposition="top center",
+    line=dict(color="red", width=2)
+))
+
+# Prediction Line fija (naranja)
+fig.add_trace(go.Scatter(
+    x=[display_week(w) for w in prediction_line.keys()],
+    y=list(prediction_line.values()),
+    mode="lines+markers+text",
+    name="Prediction Line",
+    text=[str(v) for v in prediction_line.values()],
+    textposition="bottom center",
+    line=dict(color="orange", width=2, dash="dash")
+))
+
+# Recovery Rate real (azul)
+fig.add_trace(go.Scatter(
+    x=[display_week(w) for w in weeks_real],
+    y=recovery_rate_real,
+    mode="lines+markers+text",
+    name="Recovery Rate",
+    text=[f"{v}%" for v in recovery_rate_real],
+    textposition="top center",
+    line=dict(color="blue", width=2),
+    yaxis="y2"
+))
+
+fig.update_layout(
+    title="Backlog, Prediction Line and Recovery Rate Trend",
+    xaxis=dict(title="Week", tickmode="linear", dtick=1),
+    yaxis=dict(title="Backlog / Production"),
+    yaxis2=dict(title="Recovery Rate (%)", overlaying="y", side="right", range=[0, 100]),
+    legend=dict(orientation="h", y=-0.2)
+)
+
+st.plotly_chart(fig, use_container_width=True, key="fig_recovery_overview")
 
 # ==========================
 # Annual Trend Charts
