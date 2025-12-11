@@ -122,17 +122,24 @@ weekday = today_real.weekday()              # Monday=0...Sunday=6
 days_since_sunday = (weekday - 6) % 7
 SUNDAY_DATE = today_real - timedelta(days=days_since_sunday)
 
-TODAY_DATE = SUNDAY_DATE
-TODAY = pd.to_datetime(SUNDAY_DATE)
+TODAY_DATE = SUNDAY_DATE            # Para comparaciones de overdue
+TODAY = pd.to_datetime(SUNDAY_DATE) # Para calcular age_days
+
+# ==========================
+# LIMPIEZA DE DATOS
+# ==========================
 
 df_clean = df[df["capa number"].notna()].copy()
 df_clean["created date"] = pd.to_datetime(df_clean["created date"], errors="coerce")
 df_clean["closed date"] = pd.to_datetime(df_clean["closed date"], errors="coerce")
 
-# age_days congelado al domingo
+# edad congelada al domingo
 df_clean["age_days"] = (TODAY - df_clean["created date"]).dt.days
 
-# ------------------ General Numbers ------------------
+# ==========================
+# GENERAL NUMBERS
+# ==========================
+
 total_global = df_clean["capa number"].nunique()
 inworks_global = df_clean.loc[df_clean["primary status"].str.lower() != "closed", "capa number"].nunique()
 closed_global = df_clean.loc[df_clean["primary status"].str.lower() == "closed", "capa number"].nunique()
@@ -144,14 +151,20 @@ closed_1100 = df_clean.loc[(df_clean["responsible site"] == "1100") & (df_clean[
 col1, col2 = st.columns(2)
 with col1:
     st.markdown("<h2>General Numbers - Global</h2>", unsafe_allow_html=True)
-    st.table(pd.DataFrame({"Item": ["Total CAPAs", "Total In works", "Total Closed"],
-                           "Number": [int(total_global), int(inworks_global), int(closed_global)]}))
+    st.table(pd.DataFrame({
+        "Item": ["Total CAPAs", "Total In works", "Total Closed"],
+        "Number": [int(total_global), int(inworks_global), int(closed_global)]
+    }))
 with col2:
     st.markdown("<h2>General Numbers - Site 1100</h2>", unsafe_allow_html=True)
-    st.table(pd.DataFrame({"Item": ["Total CAPAs", "Total In works", "Total Closed"],
-                           "Number": [int(total_1100), int(inworks_1100), int(closed_1100)]}))
+    st.table(pd.DataFrame({
+        "Item": ["Total CAPAs", "Total In works", "Total Closed"],
+        "Number": [int(total_1100), int(inworks_1100), int(closed_1100)]
+    }))
 
-# ------------------ CAPAs by Phase ------------------
+# ==========================
+# CAPAs BY PHASE
+# ==========================
 
 def map_phase(p):
     p = str(p).lower().strip()
@@ -167,6 +180,7 @@ df_inworks = df_clean[df_clean["primary status"].str.lower() != "closed"].copy()
 df_inworks["phase_grouped"] = df_inworks["phase"].apply(map_phase)
 df_inworks_tbl = df_inworks[df_inworks["phase_grouped"].notna()].copy()
 
+# Phase table global
 phase_global_tbl = df_inworks_tbl.groupby("phase_grouped").agg(
     Number=("capa number", "nunique"),
     Age=("age_days", "mean")
@@ -175,6 +189,7 @@ phase_global_tbl["Age (days)"] = phase_global_tbl["Age"].round(0).astype("Int64"
 phase_global_tbl["Number"] = phase_global_tbl["Number"].astype(int)
 phase_global_tbl = phase_global_tbl[["Phase", "Number", "Age (days)"]]
 
+# Phase table 1100
 df_inworks_1100_tbl = df_inworks_tbl[df_inworks_tbl["responsible site"] == "1100"].copy()
 phase_1100_tbl = df_inworks_1100_tbl.groupby("phase_grouped").agg(
     Number=("capa number", "nunique"),
@@ -184,7 +199,9 @@ phase_1100_tbl["Age (days)"] = phase_1100_tbl["Age"].round(0).astype("Int64")
 phase_1100_tbl["Number"] = phase_1100_tbl["Number"].astype(int)
 phase_1100_tbl = phase_1100_tbl[["Phase", "Number", "Age (days)"]]
 
-# ------------------ Overdue (fijo al domingo) ------------------
+# ==========================
+# OVERDUE CALCULATIONS (congelado al domingo)
+# ==========================
 
 df_inworks_due = df_inworks.copy()
 df_inworks_due["current phase due date"] = pd.to_datetime(df_inworks_due["current phase due date"], errors="coerce")
@@ -205,7 +222,9 @@ capa_inworks["Phase"] = capa_inworks["phase"].apply(map_phase)
 capa_inworks = capa_inworks[capa_inworks["Phase"].notna()].copy()
 
 capa_inworks["due_date"] = capa_inworks["current phase due date"].dt.date
-capa_inworks["Status"] = capa_inworks["due_date"].apply(lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time")
+capa_inworks["Status"] = capa_inworks["due_date"].apply(
+    lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time"
+)
 
 overdue_global = capa_inworks[capa_inworks["Status"] == "Overdue"].groupby("Phase")["capa number"].nunique().to_dict()
 overdue_1100 = capa_inworks[(capa_inworks["responsible site"] == "1100") & (capa_inworks["Status"] == "Overdue")] \
@@ -230,6 +249,7 @@ def style_phase_numbers(df_table, overdue_counts, thresholds):
         return ["", num_style, ""]
     return df_table.style.apply(lambda r: _row_style(r), axis=1)
 
+# Display Phase Tables
 col3, col4 = st.columns(2)
 with col3:
     st.markdown("<h2>CAPAs by Phase - Global</h2>", unsafe_allow_html=True)
@@ -239,21 +259,81 @@ with col4:
     st.markdown("<h2>CAPAs by Phase - Site 1100</h2>", unsafe_allow_html=True)
     st.dataframe(style_phase_numbers(phase_1100_tbl.copy(), overdue_1100, thr_1100))
 
-# ------------------ Gráficos On time vs Overdue ------------------
+
+# ==========================
+# BAR CHART FUNCTION
+# ==========================
+def make_bar_chart_totals_only(df, title):
+    phase_status = df.groupby(["Phase", "Status"]).agg(
+        CAPAs=("capa number", "nunique")
+    ).reset_index()
+    phase_status = phase_status.pivot(index="Phase", columns="Status", values="CAPAs").fillna(0)
+
+    for col in ["On time", "Overdue"]:
+        if col not in phase_status.columns:
+            phase_status[col] = 0
+
+    phase_status = phase_status.reindex(
+        ["Investigation", "Implementation", "Effectiveness Monitoring"]
+    ).fillna(0)
+
+    phases = phase_status.index.tolist()
+    on_time = phase_status["On time"].astype(int).tolist()
+    overdue = phase_status["Overdue"].astype(int).tolist()
+    totals = np.array(on_time) + np.array(overdue)
+
+    fig = go.Figure()
+    fig.add_bar(
+        x=phases, y=on_time, name="On time", marker_color="green",
+        text=on_time, textposition="inside", insidetextanchor="middle"
+    )
+    fig.add_bar(
+        x=phases, y=overdue, name="Overdue", marker_color="red",
+        text=overdue, textposition="inside", insidetextanchor="middle"
+    )
+
+    for i, total in enumerate(totals):
+        fig.add_annotation(
+            x=phases[i],
+            y=totals[i] + max(totals) * 0.05,
+            text=str(total),
+            showarrow=False,
+            yshift=5,
+            font=dict(size=11)
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        title=dict(text=title, font=dict(size=18)),
+        legend=dict(orientation="h", y=-0.2),
+        uniformtext_minsize=8,
+        uniformtext_mode="hide"
+    )
+    return fig, phase_status
+
+# ==========================
+# BAR CHARTS
+# ==========================
 
 capa_inworks["Current Due Date"] = capa_inworks["current phase due date"].dt.date
-capa_inworks["Status"] = capa_inworks["Current Due Date"].apply(lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time")
+capa_inworks["Status"] = capa_inworks["Current Due Date"].apply(
+    lambda d: "Overdue" if (pd.notna(d) and d < TODAY_DATE) else "On time"
+)
 
-fig_global, phase_global = make_bar_chart_totals_only(capa_inworks, "Global - In Works (On time vs Overdue)")
+fig_global, phase_global = make_bar_chart_totals_only(
+    capa_inworks, "Global - In Works (On time vs Overdue)"
+)
 site_1100 = capa_inworks[capa_inworks["responsible site"] == "1100"].copy()
-fig_1100, phase_1100 = make_bar_chart_totals_only(site_1100, "Site 1100 - In Works (On time vs Overdue)")
+
+fig_1100, phase_1100 = make_bar_chart_totals_only(
+    site_1100, "Site 1100 - In Works (On time vs Overdue)"
+)
 
 col5, col6 = st.columns(2)
 with col5:
     st.plotly_chart(fig_global, use_container_width=True, key="fig_global_ontime_overdue")
 with col6:
     st.plotly_chart(fig_1100, use_container_width=True, key="fig_1100_ontime_overdue")
-
 
 # ==========================================================
 # SECTION: CAPAs > 2 years - Table + Bar Chart with Totals
