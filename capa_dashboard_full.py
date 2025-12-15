@@ -647,7 +647,7 @@ def display_week(w):
     return w if w <= 52 else w - 52
 
 # --- Semanas internas ---
-weeks_real = list(range(33, 50))        # S33–S49
+weeks_real = list(range(33, 51))        # S33–S51
 weeks_prediction = list(range(41, 56))  # S41–S55 (55 = ISO3)
 
 # --- Valores reales (S33–S49) ---
@@ -656,19 +656,19 @@ initial_backlog = 11
 backlog_real = [
     11, 9, 8, 7, 6, 6, 6,
     3, 3, 3, 3, 5, 4, 5,
-    5, 6, 7
+    5, 6, 7, 6
 ]
 
 total_recovery_real = [
     2, 3, 4, 5, 6, 8, 8,
     8, 8, 8, 8, 6, 7, 6,
-    6, 5, 4
+    6, 5, 4, 6
 ]
 
 recovery_rate_real = [
     18, 27, 36, 45, 55, 73, 73,
     73, 73, 73, 73, 55, 64, 55,
-    55, 45, 36
+    55, 45, 36, 55
 ]
 
 # --- Prediction Line FIJA S41 → S55 ---
